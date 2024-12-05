@@ -161,12 +161,12 @@ async def main(db_path: str, listen_host: str, dns_port: int, http_port: int):
 	db = sqlite3.connect(db_path)
 	db.execute("""CREATE TABLE IF NOT EXISTS record (
 		name TEXT,
+		ttl INTEGER,
 		rdclass TEXT,
 		rdtype TEXT,
-		ttl INTEGER,
-		rdatas TEXT
+		rdatas TEXT,
+		PRIMARY KEY(name, rdclass, rdtype)
 	)""")
-	db.execute("CREATE UNIQUE INDEX IF NOT EXISTS lookup ON record (name, rdclass, rdtype)")
 
 	# start the DNS UDP server
 	transport, _ = await loop.create_datagram_endpoint(
@@ -203,4 +203,4 @@ if __name__ == "__main__":
 	parser.add_argument("--dns-port", type=int, default=5337, help="default 5337 (UDP)")
 	parser.add_argument("--http-port", type=int, default=8053, help="default 8053")
 	args = parser.parse_args()
-	asyncio.run(main(args.db, args.listen_host, args.dns_port, args.http_port))
+	asyncio.run(main(args.db, args.host, args.dns_port, args.http_port))

@@ -1,5 +1,9 @@
 # IHateDNS
 
+A DNS server with an RESTful HTTP API for setting records, intended for internal testing.
+
+### Invocation
+
 ```
 $ python3 ihatedns.py --help
 usage: ihatedns.py [-h] [--db DB] [--host HOST] [--dns-port DNS_PORT][--http-port HTTP_PORT]
@@ -14,6 +18,8 @@ options:
   --http-port HTTP_PORT
                         default 8053
 ```
+
+### Usage Examples
 
 ```sh
 # no config files, just REST
