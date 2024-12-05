@@ -196,7 +196,7 @@ async def main(db_path: str, listen_host: str, dns_port: int, http_port: int):
 if __name__ == "__main__":
 	import argparse
 	parser = argparse.ArgumentParser(
-		description="The DNS server for those who hate DNS"
+		description="The DNS server for people who hate DNS"
 	)
 	parser.add_argument("--db", default=":memory:", help="sqlite3 database path (defaults to :memory:)")
 	parser.add_argument("--host", default="127.0.0.1", help="listen host (default '127.0.0.1')")

@@ -1,6 +1,6 @@
 # IHateDNS
 
-A DNS server with an RESTful HTTP API for setting records, intended for internal testing.
+A DNS server with a RESTful HTTP API for updating records, intended for internal testing.
 
 ### Invocation
 
@@ -8,7 +8,7 @@ A DNS server with an RESTful HTTP API for setting records, intended for internal
 $ python3 ihatedns.py --help
 usage: ihatedns.py [-h] [--db DB] [--host HOST] [--dns-port DNS_PORT][--http-port HTTP_PORT]
 
-The DNS server for those who hate DNS
+The DNS server for people who hate DNS
 
 options:
   -h, --help            show this help message and exit
@@ -42,3 +42,8 @@ example.com. 60 IN A 1.2.3.4
 example.com. 60 IN A 8.8.8.8
 _atproto.bob.test. 60 IN TXT "did=did:web:bob.test"
 ```
+
+### TODO
+
+- Optionally, forward requests to another resolver
+- Deleting individual records
