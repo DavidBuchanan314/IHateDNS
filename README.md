@@ -1,5 +1,19 @@
 # IHateDNS
-The DNS server for people who hate DNS
+
+```
+$ python3 ihatedns.py --help
+usage: ihatedns.py [-h] [--db DB] [--host HOST] [--dns-port DNS_PORT][--http-port HTTP_PORT]
+
+The DNS server for those who hate DNS
+
+options:
+  -h, --help            show this help message and exit
+  --db DB               sqlite3 database path (defaults to :memory:)
+  --host HOST           listen host (default '127.0.0.1')
+  --dns-port DNS_PORT   default 5337 (UDP)
+  --http-port HTTP_PORT
+                        default 8053
+```
 
 ```sh
 # no config files, just REST

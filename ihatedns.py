@@ -199,8 +199,8 @@ if __name__ == "__main__":
 		description="The DNS server for those who hate DNS"
 	)
 	parser.add_argument("--db", default=":memory:", help="sqlite3 database path (defaults to :memory:)")
-	parser.add_argument("--listen-host", default="127.0.0.1")
-	parser.add_argument("--dns-port", type=int, default=5337)
-	parser.add_argument("--http-port", type=int, default=8053)
+	parser.add_argument("--host", default="127.0.0.1", help="listen host (default '127.0.0.1')")
+	parser.add_argument("--dns-port", type=int, default=5337, help="default 5337 (UDP)")
+	parser.add_argument("--http-port", type=int, default=8053, help="default 8053")
 	args = parser.parse_args()
 	asyncio.run(main(args.db, args.listen_host, args.dns_port, args.http_port))
