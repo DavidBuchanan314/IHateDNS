@@ -17,10 +17,23 @@ import asyncio
 import sqlite3
 from aiohttp import web
 
-RDATA_SEP = ","
+RDATA_SEP = "," # if you want to store TXT records with commas in, you probably want to change this
 DEFAULT_TTL = 60
 
 logger = logging.getLogger(__name__)
+
+def row_to_rrset(row: tuple) -> dns.rrset.RRset:
+	name, ttl, rdclass, rdtype, rdatas = row
+	return dns.rrset.from_text(name, ttl, rdclass, rdtype, *rdatas.split(RDATA_SEP))
+
+def rrset_to_row(rrset: dns.rrset.RRset) -> tuple:
+	return (
+		rrset.name.to_text(),
+		rrset.ttl,
+		dns.rdataclass.to_text(rrset.rdclass),
+		dns.rdatatype.to_text(rrset.rdtype),
+		RDATA_SEP.join(map(str, rrset.to_rdataset().items.keys()))
+	)
 
 def query_db(db: sqlite3.Connection, name: str, rdclass: str, rdtype: str) -> Optional[dns.rrset.RRset]:
 	row = db.execute(
@@ -32,23 +45,7 @@ def query_db(db: sqlite3.Connection, name: str, rdclass: str, rdtype: str) -> Op
 	).fetchone()
 	if row is None:
 		return None
-	name, ttl, rdclass, rdtype, rdatas = row
-	return dns.rrset.from_text(name, ttl, rdclass, rdtype, *rdatas.split(RDATA_SEP))
-
-def insert_db(db: sqlite3.Connection, rrset: dns.rrset.RRset) -> None:
-	db.execute(
-		"""
-			REPLACE INTO record (name, ttl, rdclass, rdtype, rdatas)
-			VALUES (?, ?, ?, ?, ?)
-		""",(
-			rrset.name.to_text(),
-			rrset.ttl,
-			dns.rdataclass.to_text(rrset.rdclass),
-			dns.rdatatype.to_text(rrset.rdtype),
-			RDATA_SEP.join(map(str, rrset.to_rdataset().items.keys()))
-		)
-	)
-	db.commit()
+	return row_to_rrset(row)
 
 def absolutify(name: str) -> str:
 	if name.endswith("."):
@@ -112,10 +109,18 @@ async def put_record(request: web.Request):
 	except dns.exception.SyntaxError as e:
 		return web.HTTPBadRequest(text=f"{e}\n")
 	db: sqlite3.Connection = request.app["db"]
-	insert_db(db, rrset)
+	db.execute(
+		"""
+			REPLACE INTO record (name, ttl, rdclass, rdtype, rdatas)
+			VALUES (?, ?, ?, ?, ?)
+		""",
+		rrset_to_row(rrset)
+	)
+	db.commit()
 	return web.Response()
 
 
+# a lot of noise to make the trailing slash optional...
 @routes.get("/{name}")
 @routes.get("/{name}/")
 @routes.get("/{name}/{rdtype}")
@@ -133,6 +138,19 @@ async def get_record(request: web.Request):
 	if rrset is None:
 		return web.HTTPNotFound(text="NXDOMAIN\n")
 	return web.Response(text=f"{rrset}\n")
+
+
+@routes.get("/")
+async def dump_records(request: web.Request):
+	db: sqlite3.Connection = request.app["db"]
+	res = web.StreamResponse()
+	res.content_type = "text/plain"
+	await res.prepare(request)
+	for row in db.execute("SELECT name, ttl, rdclass, rdtype, rdatas FROM record"):
+		await res.write(str(row_to_rrset(row)).encode() + b"\n")
+	await res.write_eof()
+	return res
+
 
 async def main(db_path: str, listen_host: str, dns_port: int, http_port: int):
 	loop = asyncio.get_running_loop()
