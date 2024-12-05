@@ -198,7 +198,7 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(
 		description="The DNS server for people who hate DNS"
 	)
-	parser.add_argument("--db", default=":memory:", help="sqlite3 database path (defaults to :memory:)")
+	parser.add_argument("--db", default=":memory:", help="sqlite3 db path for persisting records (defaults to :memory: i.e. no persistence)")
 	parser.add_argument("--host", default="127.0.0.1", help="listen host (default '127.0.0.1')")
 	parser.add_argument("--dns-port", type=int, default=5337, help="default 5337 (UDP)")
 	parser.add_argument("--http-port", type=int, default=8053, help="default 8053")
