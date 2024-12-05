@@ -1,5 +1,6 @@
-from typing import Tuple, Optional
-import dns # dnspython
+from typing import Optional
+import logging
+import dns
 import dns.message
 import dns.flags
 import dns.opcode
@@ -18,6 +19,8 @@ from aiohttp import web
 
 RDATA_SEP = ","
 DEFAULT_TTL = 60
+
+logger = logging.getLogger(__name__)
 
 def query_db(db: sqlite3.Connection, name: str, rdclass: str, rdtype: str) -> Optional[dns.rrset.RRset]:
 	row = db.execute(
@@ -45,6 +48,7 @@ def insert_db(db: sqlite3.Connection, rrset: dns.rrset.RRset) -> None:
 			RDATA_SEP.join(map(str, rrset.to_rdataset().items.keys()))
 		)
 	)
+	db.commit()
 
 def absolutify(name: str) -> str:
 	if name.endswith("."):
@@ -56,8 +60,6 @@ def answer_question(db: sqlite3.Connection, question: dns.rrset.RRset) -> dns.rr
 	rdclass = dns.rdataclass.to_text(question.rdclass)
 	rdtype = dns.rdatatype.to_text(question.rdtype)
 	rrset = query_db(db, name, rdclass, rdtype)
-	print("answering")
-	print(rrset)
 	if rrset is None:
 		raise KeyError()
 	return rrset
@@ -82,7 +84,10 @@ class DNSUDPProtocol(asyncio.DatagramProtocol):
 
 	def datagram_received(self, data, addr):
 		query = dns.message.from_wire(data)
+		logger.info(f"Received DNS query from UDP {addr}")
+		logger.info(f"Question: {query.question}")
 		response = handle_dns_query(self.db, query)
+		logger.info(f"Answer:   {response.answer}")
 		self.transport.sendto(response.to_wire(), addr) # TODO: handle too-long responses
 
 
@@ -106,7 +111,6 @@ async def put_record(request: web.Request):
 		)
 	except dns.exception.SyntaxError as e:
 		return web.HTTPBadRequest(text=f"{e}\n")
-	print(rrset)
 	db: sqlite3.Connection = request.app["db"]
 	insert_db(db, rrset)
 	return web.Response()
@@ -130,11 +134,13 @@ async def get_record(request: web.Request):
 		return web.HTTPNotFound(text="NXDOMAIN\n")
 	return web.Response(text=f"{rrset}\n")
 
-async def main():
+async def main(db_path: str, listen_host: str, dns_port: int, http_port: int):
 	loop = asyncio.get_running_loop()
+	logging.basicConfig(level=logging.INFO)
 
 	# set up the db
-	db = sqlite3.connect(":memory:")
+	logger.info(f"Persisting records to {db_path!r}")
+	db = sqlite3.connect(db_path)
 	db.execute("""CREATE TABLE IF NOT EXISTS record (
 		name TEXT,
 		rdclass TEXT,
@@ -146,8 +152,9 @@ async def main():
 
 	# start the DNS UDP server
 	transport, _ = await loop.create_datagram_endpoint(
-		lambda: DNSUDPProtocol(db), ("127.0.0.1", 5337)
+		lambda: DNSUDPProtocol(db), (listen_host, dns_port)
 	)
+	logger.info(f"DNS server listening on UDP {listen_host}:{dns_port}")
 
 	# set up the HTTP server
 	app = web.Application()
@@ -155,14 +162,15 @@ async def main():
 	app.add_routes(routes)
 	runner = web.AppRunner(app)
 	await runner.setup()
-	site = web.TCPSite(runner, host="127.0.0.1", port=8053)
+	site = web.TCPSite(runner, host=listen_host, port=http_port)
 	await site.start()
+	logger.info(f"HTTP server listening on http://{listen_host}:{http_port}")
 
 	try:
 		while True:
 			await asyncio.sleep(3600) # sleep forever
 	except asyncio.CancelledError:
-		print("\nShutting down...")
+		logging.info("Shutting down...")
 	finally:
 		transport.close() # close the DNS server
 
@@ -172,7 +180,9 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(
 		description="The DNS server for those who hate DNS"
 	)
-	parser.add_argument()
+	parser.add_argument("--db", default=":memory:", help="sqlite3 database path (defaults to :memory:)")
+	parser.add_argument("--listen-host", default="127.0.0.1")
+	parser.add_argument("--dns-port", type=int, default=5337)
+	parser.add_argument("--http-port", type=int, default=8053)
 	args = parser.parse_args()
-	print(args)
-	asyncio.run(main())
+	asyncio.run(main(args.db, args.listen_host, args.dns_port, args.http_port))
