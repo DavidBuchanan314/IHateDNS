@@ -71,7 +71,5 @@ sudo systemctl restart systemd-resolved.service
 
 - Optionally, forward requests to another resolver
 - Deleting individual records
-- Make it a proper python package and switch to pyproject.toml
 - More options - log levels, separate DNS/HTTP listen host?
-- TCP DNS
-- Do something sensible if the UDP response would be too long
+- Tests
