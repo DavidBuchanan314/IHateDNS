@@ -108,6 +108,8 @@ async def put_record(request: web.Request):
 		)
 	except dns.exception.SyntaxError as e:
 		return web.HTTPBadRequest(text=f"{e}\n")
+	if rrset.rdtype == dns.rdatatype.ANY:
+		return web.HTTPBadRequest(text=f"can't set ANY\n")
 	db: sqlite3.Connection = request.app["db"]
 	db.execute(
 		"""

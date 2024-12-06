@@ -57,6 +57,8 @@ And then reload the config
 sudo systemctl restart systemd-resolved.service
 ```
 
+(Note, this config will race queries against whatever your default resolver is. I think)
+
 ### TODO
 
 - Optionally, forward requests to another resolver
