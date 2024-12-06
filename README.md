@@ -2,12 +2,20 @@
 
 A DNS server with a RESTful HTTP API for updating records, intended for internal testing.
 
+### Installation
+
+```sh
+python3 -m pip install git+https://github.com/DavidBuchanan314/IHateDNS
+```
+
+Or you can just download and execute `ihatedns.py`, it's a single-file python script.
+
 ### Invocation
 
 ```
-$ python3 ihatedns.py --help
-usage: ihatedns.py [-h] [--db DB] [--host HOST] [--dns-port DNS_PORT]
-                   [--http-port HTTP_PORT]
+$ ihatedns --help
+usage: ihatedns [-h] [--db DB] [--host HOST] [--dns-port DNS_PORT]
+                [--http-port HTTP_PORT]
 
 The DNS server for people who hate DNS
 
