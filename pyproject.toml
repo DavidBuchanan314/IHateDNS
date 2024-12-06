@@ -1,0 +1,34 @@
+[build-system]
+requires = [
+	"setuptools>=61.0"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ihatedns"
+version = "v0.1"
+authors = [
+ 	{ name="David Buchanan", email="d@vidbuchanan.co.uk" },
+]
+description = "The DNS server for people who hate DNS"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+	"Programming Language :: Python :: 3",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: OS Independent",
+]
+dependencies = [
+	"dnspython", # TODO: figure out which version(s) I actually depend on
+	"aiohttp",
+]
+
+[project.urls]
+Homepage = "https://github.com/DavidBuchanan314/IHateDNS"
+Issues = "https://github.com/DavidBuchanan314/IHateDNS/issues"
+
+[project.scripts]
+ihatedns = "ihatedns:main"
+
+[tool.ruff.format]
+indent-style = "tab"

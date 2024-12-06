@@ -1,4 +1,5 @@
-from typing import Optional
+from typing import Optional, Tuple
+import argparse
 import logging
 import dns
 import dns.message
@@ -26,7 +27,7 @@ def row_to_rrset(row: tuple) -> dns.rrset.RRset:
 	name, ttl, rdclass, rdtype, rdatas = row
 	return dns.rrset.from_text(name, ttl, rdclass, rdtype, *rdatas.split(RDATA_SEP))
 
-def rrset_to_row(rrset: dns.rrset.RRset) -> tuple:
+def rrset_to_row(rrset: dns.rrset.RRset) -> Tuple[str, int, str, str, str]:
 	return (
 		rrset.name.to_text(),
 		rrset.ttl,
@@ -62,6 +63,7 @@ def answer_question(db: sqlite3.Connection, question: dns.rrset.RRset) -> dns.rr
 	return rrset
 
 def handle_dns_query(db: sqlite3.Connection, query: dns.message.Message) -> dns.message.Message:
+	logger.info(f"Question: {query.question}")
 	response = dns.message.make_response(query)
 	try:
 		response.answer = [answer_question(db, q) for q in query.question]
@@ -69,24 +71,41 @@ def handle_dns_query(db: sqlite3.Connection, query: dns.message.Message) -> dns.
 		response.set_rcode(dns.rcode.NXDOMAIN)
 	except:
 		response.set_rcode(dns.rcode.SERVFAIL)
+	logger.info(f"Answer:   {response.answer}")
 	return response
 
-class DNSUDPProtocol(asyncio.DatagramProtocol):
+class DNSProtocolUDP(asyncio.DatagramProtocol):
 	def __init__(self, db: sqlite3.Connection) -> None:
 		self.db = db
 		super().__init__()
 
-	def connection_made(self, transport):
+	def connection_made(self, transport: asyncio.DatagramTransport) -> None:
 		self.transport = transport
 
-	def datagram_received(self, data, addr):
+	def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
 		query = dns.message.from_wire(data)
-		logger.info(f"Received DNS query from UDP {addr}")
-		logger.info(f"Question: {query.question}")
+		logger.info(f"Received DNS query from UDP {addr[0]}")
 		response = handle_dns_query(self.db, query)
-		logger.info(f"Answer:   {response.answer}")
-		self.transport.sendto(response.to_wire(), addr) # TODO: handle too-long responses
+		response_bytes = response.to_wire()
+		if len(response_bytes) <= 512:
+			self.transport.sendto(response_bytes, addr)
+		response.flags |= dns.flags.TC # truncated response (client should retry on TCP)
+		self.transport.sendto(response.to_wire()[:512], addr)
 
+class DNSProtocolTCP(asyncio.Protocol):
+	def __init__(self, db: sqlite3.Connection) -> None:
+		self.db = db
+		super().__init__()
+
+	def connection_made(self, transport: asyncio.Transport) -> None:
+		self.transport = transport
+
+	def data_received(self, data: bytes):
+		query = dns.message.from_wire(data)
+		logger.info(f"Received DNS query from TCP {self.transport.get_extra_info('peername')}")
+		response = handle_dns_query(self.db, query)
+		self.transport.write(response.to_wire())
+		self.transport.close()
 
 
 routes = web.RouteTableDef()
@@ -154,7 +173,7 @@ async def dump_records(request: web.Request):
 	return res
 
 
-async def main(db_path: str, listen_host: str, dns_port: int, http_port: int):
+async def async_main(db_path: str, listen_host: str, dns_port: int, http_port: int):
 	loop = asyncio.get_running_loop()
 	logging.basicConfig(level=logging.INFO)
 
@@ -172,7 +191,7 @@ async def main(db_path: str, listen_host: str, dns_port: int, http_port: int):
 
 	# start the DNS UDP server
 	transport, _ = await loop.create_datagram_endpoint(
-		lambda: DNSUDPProtocol(db), (listen_host, dns_port)
+		lambda: DNSProtocolUDP(db), (listen_host, dns_port)
 	)
 	logger.info(f"DNS server listening on UDP {listen_host}:{dns_port}")
 
@@ -194,9 +213,7 @@ async def main(db_path: str, listen_host: str, dns_port: int, http_port: int):
 	finally:
 		transport.close() # close the DNS server
 
-
-if __name__ == "__main__":
-	import argparse
+def main():
 	parser = argparse.ArgumentParser(
 		description="The DNS server for people who hate DNS"
 	)
@@ -205,4 +222,7 @@ if __name__ == "__main__":
 	parser.add_argument("--dns-port", type=int, default=5337, help="default 5337 (UDP)")
 	parser.add_argument("--http-port", type=int, default=8053, help="default 8053")
 	args = parser.parse_args()
-	asyncio.run(main(args.db, args.host, args.dns_port, args.http_port))
+	asyncio.run(async_main(args.db, args.host, args.dns_port, args.http_port))
+
+if __name__ == "__main__":
+	main()
