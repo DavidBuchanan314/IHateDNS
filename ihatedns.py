@@ -87,26 +87,30 @@ class DNSProtocolUDP(asyncio.DatagramProtocol):
 		logger.info(f"Received DNS query from UDP {addr[0]}")
 		response = handle_dns_query(self.db, query)
 		response_bytes = response.to_wire()
-		if len(response_bytes) <= 512:
-			self.transport.sendto(response_bytes, addr)
-		response.flags |= dns.flags.TC # truncated response (client should retry on TCP)
-		self.transport.sendto(response.to_wire()[:512], addr)
+		if len(response_bytes) > 512:
+			response.flags |= dns.flags.TC # truncated response (client should retry on TCP)
+			response_bytes = response.to_wire()[:512]
+		self.transport.sendto(response_bytes, addr)
 
-class DNSProtocolTCP(asyncio.Protocol):
-	def __init__(self, db: sqlite3.Connection) -> None:
-		self.db = db
-		super().__init__()
 
-	def connection_made(self, transport: asyncio.Transport) -> None:
-		self.transport = transport
-
-	def data_received(self, data: bytes):
-		query = dns.message.from_wire(data)
-		logger.info(f"Received DNS query from TCP {self.transport.get_extra_info('peername')}")
-		response = handle_dns_query(self.db, query)
-		self.transport.write(response.to_wire())
-		self.transport.close()
-
+async def handle_tcp_client(db: sqlite3.Connection, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+	try:
+		while True:
+			data_len = int.from_bytes(await reader.readexactly(2))
+			data = await reader.readexactly(data_len)
+			query = dns.message.from_wire(data)
+			logger.info(f"Received DNS query from TCP {writer.get_extra_info('peername')[0]}")
+			response = handle_dns_query(db, query)
+			response_bytes = response.to_wire()
+			if len(response_bytes) > 0xffff: # is this the right thing to do?
+				response.flags |= dns.flags.TC
+				response_bytes = response.to_wire()[:0xffff]
+			writer.write(len(response_bytes).to_bytes(2) + response_bytes)
+			await writer.drain()
+	except asyncio.IncompleteReadError:
+		pass
+	finally:
+		writer.close()
 
 routes = web.RouteTableDef()
 
@@ -189,11 +193,19 @@ async def async_main(db_path: str, listen_host: str, dns_port: int, http_port: i
 		PRIMARY KEY(name, rdclass, rdtype)
 	)""")
 
-	# start the DNS UDP server
+	# start the UDP DNS server
 	transport, _ = await loop.create_datagram_endpoint(
 		lambda: DNSProtocolUDP(db), (listen_host, dns_port)
 	)
 	logger.info(f"DNS server listening on UDP {listen_host}:{dns_port}")
+
+	# start the TCP DNS server
+	await asyncio.start_server(
+		lambda r, w: handle_tcp_client(db, r, w), # inject the db
+		host=listen_host,
+		port=dns_port
+	)
+	logger.info(f"DNS server listening on TCP {listen_host}:{dns_port}")
 
 	# set up the HTTP server
 	app = web.Application()
