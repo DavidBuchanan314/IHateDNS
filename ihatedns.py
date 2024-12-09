@@ -23,9 +23,9 @@ DEFAULT_TTL = 60
 
 logger = logging.getLogger(__name__)
 
-def row_to_rrset(row: tuple) -> dns.rrset.RRset:
+def row_to_rrset(row: tuple, override_name: Optional[str]=None) -> dns.rrset.RRset:
 	name, ttl, rdclass, rdtype, rdatas = row
-	return dns.rrset.from_text(name, ttl, rdclass, rdtype, *rdatas.split(RDATA_SEP))
+	return dns.rrset.from_text(override_name or name, ttl, rdclass, rdtype, *rdatas.split(RDATA_SEP))
 
 def rrset_to_row(rrset: dns.rrset.RRset) -> Tuple[str, int, str, str, str]:
 	return (
@@ -36,7 +36,7 @@ def rrset_to_row(rrset: dns.rrset.RRset) -> Tuple[str, int, str, str, str]:
 		RDATA_SEP.join(map(str, rrset.to_rdataset().items.keys()))
 	)
 
-def query_db(db: sqlite3.Connection, name: str, rdclass: str, rdtype: str) -> Optional[dns.rrset.RRset]:
+def query_db(db: sqlite3.Connection, name: str, rdclass: str, rdtype: str, override_name: Optional[str]=None) -> Optional[dns.rrset.RRset]:
 	row = db.execute(
 		"""
 			SELECT name, ttl, rdclass, rdtype, rdatas
@@ -46,7 +46,7 @@ def query_db(db: sqlite3.Connection, name: str, rdclass: str, rdtype: str) -> Op
 	).fetchone()
 	if row is None:
 		return None
-	return row_to_rrset(row)
+	return row_to_rrset(row, override_name=override_name or name)
 
 def absolutify(name: str) -> str:
 	if name.endswith("."):
@@ -58,6 +58,11 @@ def answer_question(db: sqlite3.Connection, question: dns.rrset.RRset) -> dns.rr
 	rdclass = dns.rdataclass.to_text(question.rdclass)
 	rdtype = dns.rdatatype.to_text(question.rdtype)
 	rrset = query_db(db, name, rdclass, rdtype)
+	if rrset is not None:
+		return rrset
+	# try again looking for wildcards
+	_, _, suffix = name.partition(".")
+	rrset = query_db(db, "*." + suffix, rdclass, rdtype, override_name=name)
 	if rrset is None:
 		raise KeyError()
 	return rrset
@@ -69,7 +74,8 @@ def handle_dns_query(db: sqlite3.Connection, query: dns.message.Message) -> dns.
 		response.answer = [answer_question(db, q) for q in query.question]
 	except KeyError:
 		response.set_rcode(dns.rcode.NXDOMAIN)
-	except:
+	except Exception as e:
+		logging.exception(e)
 		response.set_rcode(dns.rcode.SERVFAIL)
 	logger.info(f"Answer:   {response.answer}")
 	return response

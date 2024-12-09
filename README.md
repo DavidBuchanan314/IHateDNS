@@ -51,6 +51,11 @@ $ curl http://localhost:8053/
 example.com. 60 IN A 1.2.3.4
 example.com. 60 IN A 8.8.8.8
 _atproto.bob.test. 60 IN TXT "did=did:web:bob.test"
+
+# wildcard records also work, btw
+$ curl -X PUT http://127.0.0.1:8053/*.example.com/5.6.7.8
+$ dig -p 5337 @127.0.0.1 +noall +answer blah.example.com
+blah.example.com.       60      IN      A       5.6.7.8
 ```
 
 ### Protip
