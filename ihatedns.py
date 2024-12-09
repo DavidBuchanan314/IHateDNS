@@ -23,11 +23,13 @@ DEFAULT_TTL = 60
 
 logger = logging.getLogger(__name__)
 
-def row_to_rrset(row: tuple, override_name: Optional[str]=None) -> dns.rrset.RRset:
+RowType = Tuple[str, int, str, str, str] # name, ttl, rdclass, rdtype, rdatas
+
+def row_to_rrset(row: RowType, override_name: Optional[str]=None) -> dns.rrset.RRset:
 	name, ttl, rdclass, rdtype, rdatas = row
 	return dns.rrset.from_text(override_name or name, ttl, rdclass, rdtype, *rdatas.split(RDATA_SEP))
 
-def rrset_to_row(rrset: dns.rrset.RRset) -> Tuple[str, int, str, str, str]:
+def rrset_to_row(rrset: dns.rrset.RRset) -> RowType:
 	return (
 		rrset.name.to_text(),
 		rrset.ttl,
